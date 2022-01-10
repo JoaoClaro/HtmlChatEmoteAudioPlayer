@@ -1,0 +1,9 @@
+{
+  "auth": {
+    "username": "***",
+    "password": "***"
+  },
+  "audio_data": {
+    "sus": ["https://www.myinstants.com/media/sounds/among.mp3"]
+  }    
+}

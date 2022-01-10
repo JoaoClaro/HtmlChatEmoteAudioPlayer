@@ -1,0 +1,195 @@
+<script src='https://github.com/tmijs/tmi.js/releases/download/v1.8.5/tmi.min.js'></script>
+<script>
+  /* TODO
+  * Detect if emote? show emote on screen?
+  * Channel visual audio feedback? waveform, bars or just megaphone-like.
+  */
+
+  let audio_player;
+  let client;
+
+  document.addEventListener('keypress', onKeyPress);
+  window.addEventListener('DOMContentLoaded', onPageLoad);
+
+  // Runs on page load, gets data from localStorage
+  function onPageLoad(event) {
+    const local_data = localStorage.getItem('data');
+
+    if (!local_data) return;
+    
+    loadJsonData(local_data);
+  }
+
+  // Parses the Twitch chat message
+  function parseMessage(target, context, msg, self){
+    if (!msg) return;
+
+    const message = msg.trim().split(' ');
+    const audio_key = message.find(function (word) {
+      return audio_player.hasAudioFile(word);
+    });
+
+    if (!audio_key) return;
+
+    playAudio(audio_key);
+  }
+
+  // Plays an audio file
+  function playAudio(audio_key) {
+    if (audio_player.isPlaying()) return;
+
+    const audio_file = audio_player.getAudioFile(audio_key);
+    audio_player.src = audio_file;
+    audio_player.loop = false;
+    audio_player.play();
+  }
+
+  // Create an Audio object with the given data file paths
+  function createAudioPlayer(audio_data) {
+    HTMLAudioElement.prototype.isPlaying = function() {
+      const self = this;
+      return !self.ended && self.src !== '';
+    }
+    HTMLAudioElement.prototype.loadFiles = function(data) {
+      const self = this;
+      self.file_data = data;
+      console.log('* Loaded files:', self.file_data);
+    }
+    HTMLAudioElement.prototype.hasAudioFile = function(key) {
+      const self = this;
+      return Object.keys(self.file_data).includes(key)
+    }
+    HTMLAudioElement.prototype.getAudioFile = function(key) {
+      const self = this;
+      const files = self.file_data[key];
+      return files[Math.floor((Math.random()*files.length))];
+    }
+    const audio_player = new Audio();
+    audio_player.loadFiles(audio_data);
+    return audio_player;
+  }
+
+  // Create a Twitch Messaging Interface client
+  function createClient(auth) {
+    const client = new tmi.client({
+      identity: {
+        username: auth.username,
+        password: auth.password // Generate from https://twitchapps.com/tmi/
+      },
+      channels: [auth.username]
+    });
+    client.on('message', onMessageHandler);
+    client.on('connected', onConnectedHandler);
+
+    // Connect to Twitch:
+    client.connect();
+
+    return client;
+  }
+
+  // Called every time a message comes in
+  function onMessageHandler(target, context, msg, self) {
+    if (self) return; // Ignore messages from the bot
+
+    parseMessage(target, context, msg, self);
+  }
+
+  // Called every time the bot connects to Twitch chat
+  function onConnectedHandler(addr, port) {
+    console.log(`* Connected to ${addr}:${port}`);
+  }
+
+  // Called when key is pressed 
+  function onKeyPress(e) {
+    const isLoadKey = e.shiftKey && e.charCode === 76; // Shift+L
+    const isResetKey = e.shiftKey && e.charCode === 82; // Shift+R
+    if (isLoadKey) { onLoadJsonKey(); return; }
+    if (isResetKey) { onResetJsonKey(); return; }
+  }
+
+  // Called when Shift+R is pressed 
+  function onResetJsonKey() {
+    localStorage.removeItem('data');
+    console.log('* RESET LOADED JSON');
+  }
+
+  // Called when Shift+L is pressed 
+  function onLoadJsonKey() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = function (e) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.readAsText(file, 'UTF-8');
+      reader.onload = onJsonFileSelect
+    }
+    input.click();
+  }
+
+  // Called when JSON file is selected
+  function onJsonFileSelect(e) {
+    const json_data = e.target.result;
+    localStorage.setItem('data', json_data);
+    loadJsonData(json_data);
+  }
+
+  // Loads JSON data, starting the Client and Audio Player
+  function loadJsonData(json_data) {
+    const data = validateJson(json_data);
+    if (!data) {
+      return;
+    }
+
+    audio_player = createAudioPlayer(data.audio_data);
+    client = createClient(data.auth);
+  }
+
+  // Validates JSON structure
+  function validateJson(json_data) {
+    let data;
+    const errMsg = '* ERROR LOADING JSON DATA:'
+
+    try { data = JSON.parse(json_data); }
+    catch (e) {
+      console.log(`${errMsg} INVALID JSON DOCUMENT`);
+      return;
+    }
+
+    const data_keys = Object.keys(data);
+    if (!data_keys.includes('auth')) {
+      console.log(`${errMsg} JSON DOCUMENT MISSING "auth" KEY`);
+      return;
+    }
+    if (!data_keys.includes('audio_data')) {
+      console.log(`${errMsg} JSON DOCUMENT MISSING "audio_data" KEY`);
+      return;
+    }
+
+    const auth_keys = Object.keys(data.auth);
+    if (!auth_keys.includes('username')) {
+      console.log(`${errMsg} JSON DOCUMENT MISSING "auth.username" KEY`);
+      return;
+    }
+    if (!auth_keys.includes('password')) {
+      console.log(`${errMsg} JSON DOCUMENT MISSING "auth.password" KEY`);
+      return;
+    }
+
+    const audio_keys = Object.keys(data.audio_data);
+    const audio_keys_valid = audio_keys.every(function (key) {
+      const audio_files = data.audio_data[key];
+      const is_array = Array.isArray(audio_files);
+      const is_string_array = audio_files.every(function (str) {
+        return typeof str === 'string'
+      });
+      return is_array && is_string_array;
+    });
+    if (!audio_keys_valid) {
+      console.log(`${errMsg} JSON "audio_data" CHILD KEY VALUE IS NOT STRING ARRAY`);
+      return;
+    }
+
+    return data;
+  }
+</script>
