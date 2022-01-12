@@ -1,7 +1,10 @@
+<html><head></head><body></body></html>
 <script src='https://github.com/tmijs/tmi.js/releases/download/v1.8.5/tmi.min.js'></script>
 <script>
   /* TODO
-  * Detect if emote? show emote on screen?
+  * Improve parse to allow stuff like "lets go". ALIAS?
+  * Command to show available keywords?
+  * Allow local files? how to sync FileReader to generate URL.
   * Channel visual audio feedback? waveform, bars or just megaphone-like.
   */
 
@@ -20,16 +23,19 @@
     loadJsonData(local_data);
   }
 
-  // Parses the Twitch chat message
+  // Parses the Twitch chat message and detects words to play sounds
   function parseMessage(target, context, msg, self){
     if (!msg) return;
 
-    const message = msg.trim().split(' ');
-    const audio_key = message.find(function (word) {
+    const message = msg.trim();
+    const words = message.split(' ');
+    let audio_key = words.find(function (word) {
       return audio_player.hasAudioFile(word);
     });
 
-    if (!audio_key) return;
+    if (!audio_key && !audio_player.hasAudioFile(message)) return;
+      
+    audio_key = message;
 
     playAudio(audio_key);
   }
@@ -37,15 +43,13 @@
   // Plays an audio file
   function playAudio(audio_key) {
     if (audio_player.isPlaying()) return;
-
-    const audio_file = audio_player.getAudioFile(audio_key);
-    audio_player.src = audio_file;
+    audio_player.src = audio_player.getAudioFile(audio_key);
     audio_player.loop = false;
     audio_player.play();
   }
 
   // Create an Audio object with the given data file paths
-  function createAudioPlayer(audio_data) {
+  function createAudioPlayer(audio_files) {
     HTMLAudioElement.prototype.isPlaying = function() {
       const self = this;
       return !self.ended && self.src !== '';
@@ -65,7 +69,7 @@
       return files[Math.floor((Math.random()*files.length))];
     }
     const audio_player = new Audio();
-    audio_player.loadFiles(audio_data);
+    audio_player.loadFiles(audio_files);
     return audio_player;
   }
 
@@ -141,7 +145,7 @@
       return;
     }
 
-    audio_player = createAudioPlayer(data.audio_data);
+    audio_player = createAudioPlayer(data.audio_files);
     client = createClient(data.auth);
   }
 
@@ -161,8 +165,8 @@
       console.log(`${errMsg} JSON DOCUMENT MISSING "auth" KEY`);
       return;
     }
-    if (!data_keys.includes('audio_data')) {
-      console.log(`${errMsg} JSON DOCUMENT MISSING "audio_data" KEY`);
+    if (!data_keys.includes('audio_files')) {
+      console.log(`${errMsg} JSON DOCUMENT MISSING "audio_files" KEY`);
       return;
     }
 
@@ -176,9 +180,9 @@
       return;
     }
 
-    const audio_keys = Object.keys(data.audio_data);
+    const audio_keys = Object.keys(data.audio_files);
     const audio_keys_valid = audio_keys.every(function (key) {
-      const audio_files = data.audio_data[key];
+      const audio_files = data.audio_files[key];
       const is_array = Array.isArray(audio_files);
       const is_string_array = audio_files.every(function (str) {
         return typeof str === 'string'
@@ -186,7 +190,7 @@
       return is_array && is_string_array;
     });
     if (!audio_keys_valid) {
-      console.log(`${errMsg} JSON "audio_data" CHILD KEY VALUE IS NOT STRING ARRAY`);
+      console.log(`${errMsg} JSON "audio_files" CHILD KEY VALUE IS NOT STRING ARRAY`);
       return;
     }
 
